@@ -17,16 +17,13 @@ Ideas:
         - secondary_stock_prices.csv: Data on securities that give a better sense on how the market is performing as a whole.
         - trades.csv: Summary of previous week's trading volumes.
 
-
-
 Questions:
 
-    - SecuritiesCode [1300 - 10000] vs OptionsCode [130M - 200M] (Can they be of the same company?)
+    - SecuritiesCode [1300 - 10000] vs OptionsCode [130M - 199M] (Can they be of the same company?)
     - Does giving the model too many input features facilitate overfitting?
     - Which input features are more important to making predicitions?
     - Memory Management
         - How large of a pretrained model? Pros and Cons
         - Larger input size fills up memory quicker
         - FP16 [10^4] vs FP32 [10^38] (Masked Attention uses -inf + softmax to mask the top right corner of the attention matrix)
-
-
+        

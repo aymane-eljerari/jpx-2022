@@ -6,6 +6,12 @@ def concat_data(train_path = "data/train_files/", supplemental_path= "data/suppl
     Concatenate Train and Supplemental
     Data into a signle file
     """
+
+    path = "modified_data/"
+    isdir = os.path.isdir(path)
+
+    if not isdir:
+        os.mkdir(path)
     
     files =  os.listdir(train_path)
 
@@ -16,4 +22,6 @@ def concat_data(train_path = "data/train_files/", supplemental_path= "data/suppl
 
         concat = pd.concat([train, supplemental])
 
-        concat.to_csv(f"concatenated_data/{i}") 
+        concat.to_csv(f"modified_data/{i}") 
+    
+    print("Done concatenating all files!")
