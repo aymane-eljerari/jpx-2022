@@ -55,15 +55,21 @@ class JPXData(Dataset):
         # print(f"IDX {idx} - Range of input  {input_date_first, input_date_last}, Number of Stocks on day {input_date}: {input_date_last - input_date_first + 1}")
         # print(f"IDX {idx} - Range of target {target_date_first, target_date_last}, Number of Stocks on day {target_date}: {target_date_last - target_date_first + 1}")
 
-        input_data  = torch.tensor(self.stock_prices[["Open"]][input_date_first:input_date_last+1].values, dtype=torch.float).squeeze()
-        target_data = torch.tensor(self.stock_prices[["Open"]][target_date_first:target_date_last+1].values, dtype=torch.float).squeeze()
+        input_data  = self.stock_prices[["Open"]][input_date_first:input_date_last+1].values.tolist()
+        target_data = self.stock_prices[["Open"]][target_date_first:target_date_last+1].values.tolist()
+        
+        input_tensor  = torch.tensor([x for xs in input_data for x in xs], dtype=torch.float)
+        target_tensor = torch.tensor([x for xs in target_data for x in xs], dtype=torch.float)
 
         # Initialize dataframes of zeroes to append to input and target data
-        input_zero_df  = torch.zeros(2000 - len(input_data), dtype=torch.float)
-        target_zero_df = torch.zeros(2000 - len(target_data), dtype=torch.float)
+        input_zero_df  = torch.zeros((2000 - len(input_data),), dtype=torch.float)
+        target_zero_df = torch.zeros((2000 - len(target_data),), dtype=torch.float)
 
-        input_concat  = torch.cat((input_data, input_zero_df))
-        target_concat = torch.cat((target_data, target_zero_df))
+        input_concat  = torch.nan_to_num(torch.cat((input_tensor, input_zero_df)), nan=0)
+        target_concat = torch.nan_to_num(torch.cat((target_tensor, target_zero_df)), nan=0)
+
+        input_final  = (input_concat - torch.mean(input_concat)) / torch.std(input_concat)
+        target_final = (target_concat - torch.mean(target_concat)) / torch.std(target_concat)
 
         # print(f"Input shape: {input_concat}")
         # print(f"Target shape: {target_concat}")
@@ -88,4 +94,4 @@ class JPXData(Dataset):
         # print(f"Target shape: {target_final.shape}")
 
 
-        return input_concat, target_concat
+        return input_final, target_final
