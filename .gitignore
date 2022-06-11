@@ -2,3 +2,5 @@ data
 modified_data
 saved_models
 *.pyc
+__pycache__
+helper_functions/__pycache__
