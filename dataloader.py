@@ -6,7 +6,7 @@ from torch.utils.data import Dataset
 from datetime import datetime, timedelta
 
 
-class JPXData_test(Dataset):
+class JPXData(Dataset):
 	def __init__(self, data_dir="modified_data", stock_list="tokenized_stock_list.csv", stock_prices="stock_prices.csv"):
 		"""
 			data_dir        (string): Directory with where data is.
