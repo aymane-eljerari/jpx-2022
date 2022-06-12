@@ -19,7 +19,7 @@ class JPXData(Dataset):
         self.stock_min          = []
         self.stock_max          = []
         self.stock_mean         = []
-        self.stock_var          = []
+        self.stock_std          = []
         self.rate_mean          = []
         self.rate_var           = []
         
@@ -32,7 +32,7 @@ class JPXData(Dataset):
             dates.append(datetime.strptime(i, '%Y-%m-%d').date())
         dates = sorted(dates)
         
-        ## Store the min and max values for each stock to normalize
+        # # Store the min and max values for each stock to normalize
         # for i in self.stock_id:
         #     self.stock_min.append(min(list(self.stock_prices.loc[self.stock_prices['SecuritiesCode'] == i]["Close"])))
         #     self.stock_max.append(max(list(self.stock_prices.loc[self.stock_prices['SecuritiesCode'] == i]["Close"])))
@@ -40,7 +40,7 @@ class JPXData(Dataset):
         # Store mean and variance for each stock to normalize
         for i in self.stock_id:
             self.stock_mean.append(np.mean(np.nan_to_num(list(self.stock_prices.loc[self.stock_prices['SecuritiesCode'] == i]["Close"]), nan=0)))
-            self.stock_var.append(np.var(np.nan_to_num(list(self.stock_prices.loc[self.stock_prices['SecuritiesCode'] == i]["Close"]), nan=0)))
+            self.stock_std.append(np.std(np.nan_to_num(list(self.stock_prices.loc[self.stock_prices['SecuritiesCode'] == i]["Close"]), nan=0)))
 
     
         self.__dates            = dates
@@ -71,12 +71,12 @@ class JPXData(Dataset):
         # Write "Close" price data at it's given stock index
         for i in range(len(input_data)):
             input_index = self.indices[input_data["SecuritiesCode"][i]]
-            input_tensor[input_index] = (input_data["Close"][i] - self.stock_mean[input_index]) / self.stock_var[input_index]
+            input_tensor[input_index] = (input_data["Close"][i] - self.stock_mean[input_index]) / self.stock_std[input_index]
 
         for i in range(len(target_data)):
             target_index = self.indices[target_data["SecuritiesCode"][i]]
             target_tensor[target_index] = target_data["Target"][i] * 100
-    
+
         # Convert nan to 0
         input_final  = input_tensor.nan_to_num(nan=0)
         target_final = target_tensor.nan_to_num(nan=0)
