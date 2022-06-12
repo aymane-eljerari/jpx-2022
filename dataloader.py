@@ -26,7 +26,7 @@ class JPXData_test(Dataset):
 		self.indices            = {i: self.stock_id.index(i) for i in self.stock_id}
 		self.stock_id           = torch.tensor(self.stock_id)
 		self.dates              = self.__process_dates()
-		self.__num_stocks       = len(self.stock_list)
+		self.__num_stocks       = len(self.stock_id)
 
 		# Store mean and variance for each stock to normalize
 		self.stock_means, self.stock_stds  = self.__calc_means_stds()
