@@ -6,92 +6,121 @@ from torch.utils.data import Dataset
 from datetime import datetime, timedelta
 
 
-class JPXData(Dataset):
-    def __init__(self, batch_size, data_dir="modified_data", stock_list="tokenized_stock_list.csv", stock_prices="stock_prices.csv"):
-        """
+class JPXData_test(Dataset):
+	def __init__(self, data_dir="modified_data", stock_list="tokenized_stock_list.csv", stock_prices="stock_prices.csv"):
+		"""
 			data_dir        (string): Directory with where data is.
 			stock_list      (string): File containing information about each stock.
-            stock_prices    (string): File containing daily stock price data.
+			stock_prices    (string): File containing daily stock price data.
 		"""
-        self.data_dir           = data_dir
-        self.stock_list         = pd.read_csv(data_dir + '/' + stock_list)
-        self.stock_prices       = pd.read_csv(data_dir + '/' + stock_prices)
-        self.batch_size         = batch_size
-        
-        # Sort dates chronologically and store them in self.__dates
-        dates = []
-        for i in list(set(self.stock_prices["Date"])):
-            dates.append(datetime.strptime(i, '%Y-%m-%d').date())
-        dates = sorted(dates)
-    
-        self.__dates            = dates
-        self.__num_stocks       = len(self.stock_list)
-    
-    def __len__(self):
-        # Verify data set size
-        return len(self.stock_prices) // self.batch_size
+		self.data_dir           = data_dir
+		self.stock_list         = pd.read_csv(data_dir + '/' + stock_list)
+		self.stock_prices       = pd.read_csv(data_dir + '/' + stock_prices)
+		self.stock_min          = []
+		self.stock_max          = []
+		self.stock_mean         = []
+		self.stock_var          = []
+		self.rate_mean          = []
+		self.rate_var           = []
+		self.stock_id           = sorted(list(set(self.stock_prices["SecuritiesCode"])))
+		self.indices            = {i: self.stock_id.index(i) for i in self.stock_id}
+		self.stock_id           = torch.tensor(self.stock_id)
+		self.dates              = self.__process_dates()
+		self.__num_stocks       = len(self.stock_list)
 
-    def __getitem__(self, idx):
-        # JPX Holiday Calendar 2017 [https://stock-market-holidays.org/2017-japan-exchange-group-holidays/]
+		# Store mean and variance for each stock to normalize
+		self.stock_means, self.stock_stds  = self.__calc_means_stds()
 
-        # Find the day corresponding to input idx 
-        input_date  = self.__dates[idx]
-        target_date = self.__dates[idx+1]
+		self.inputs , self.targets = self.__process_data()
 
-        # Find index of first occurence of input_date in dataset
-        input_date_first = list(self.stock_prices["Date"]).index(input_date.strftime("%Y-%m-%d"))
+		
+	
+	def __len__(self):
+		# Verify data set size
+		return len(self.dates)
+		
+	def __getitem__(self, idx):
+		return self.inputs[idx], self.targets[idx]
+	
+	def __process_data(self):
+		def get_data(date):
+			input_date = date.strftime("%Y-%m-%d")
 
-        # Find index of the last occurence of input_date in dataset
-        reversed_data   = list(self.stock_prices["Date"])[::-1].index(input_date.strftime("%Y-%m-%d"))
-        input_date_last = self.__len__() - 1 - reversed_data
+			# extract input data
+			data = self.stock_prices.query("Date == @input_date")
+			data = data.sort_values(by='SecuritiesCode')
+			data = data[["Close", "Target", 'SecuritiesCode']].reset_index()
 
-        # Find index of first occurence of target_date in dataset
-        target_date_first = list(self.stock_prices["Date"]).index(target_date.strftime("%Y-%m-%d"))
+			input_data  = torch.tensor(data[ "Close"].values,dtype=torch.float)
+			target_data = torch.tensor(data["Target"].values,dtype=torch.float)
+			codes_data  = torch.tensor(data["SecuritiesCode"].values,dtype=torch.float)
 
-        # Find index of the last occurence of target_date in dataset
-        reversed_data    = list(self.stock_prices["Date"])[::-1].index(target_date.strftime("%Y-%m-%d"))
-        target_date_last = self.__len__() - 1 - reversed_data
+			# get indecies for stocks present on date
+			idx = torch.searchsorted(self.stock_id,codes_data)
 
-        # print(f"IDX {idx} - Range of input  {input_date_first, input_date_last}, Number of Stocks on day {input_date}: {input_date_last - input_date_first + 1}")
-        # print(f"IDX {idx} - Range of target {target_date_first, target_date_last}, Number of Stocks on day {target_date}: {target_date_last - target_date_first + 1}")
+			# standardize input
+			means      = self.stock_means[idx]
+			stds       = self.stock_stds[idx]
+			input_data = (input_data - means) / stds
 
-        input_data  = self.stock_prices[["Open"]][input_date_first:input_date_last+1].values.tolist()
-        target_data = self.stock_prices[["Open"]][target_date_first:target_date_last+1].values.tolist()
-        
-        input_tensor  = torch.tensor([x for xs in input_data for x in xs], dtype=torch.float)
-        target_tensor = torch.tensor([x for xs in target_data for x in xs], dtype=torch.float)
+			# remove nans from input
+			input_data = input_data.nan_to_num(nan=0)
 
-        # Initialize dataframes of zeroes to append to input and target data
-        input_zero_df  = torch.zeros((2000 - len(input_data),), dtype=torch.float)
-        target_zero_df = torch.zeros((2000 - len(target_data),), dtype=torch.float)
+			return input_data, target_data, idx
 
-        input_concat  = torch.nan_to_num(torch.cat((input_tensor, input_zero_df)), nan=0)
-        target_concat = torch.nan_to_num(torch.cat((target_tensor, target_zero_df)), nan=0)
+		def calc_io(date):
+			# tensor dimensions
+			input_dim  = self.__num_stocks
+			output_dim = self.__num_stocks
 
-        input_final  = (input_concat - torch.mean(input_concat)) / torch.std(input_concat)
-        target_final = (target_concat - torch.mean(target_concat)) / torch.std(target_concat)
+			# initialized tensors
+			input_tensor  = torch.zeros(input_dim)
+			output_tensor = torch.empty(output_dim).fill_(float('NaN'))
 
-        # print(f"Input shape: {input_concat}")
-        # print(f"Target shape: {target_concat}")
+			input_data, target_data, idx = get_data(date)
 
+			input_tensor[ idx] = input_data
+			output_tensor[idx] = target_data
 
-        # input_stacked  = torch.hstack((input_data[:, 0],input_data[:, 1]))
-        # target_stacked = torch.hstack((target_data[:, 0], target_data[:, 1]))
+			return [input_tensor, output_tensor]
 
-        # print(f"Input shape: {input_stacked}")
-        # print(f"Target shape: {target_stacked}")
-        
-        # # print(f"Input shape: {input_zero_df.shape}")
-        # # print(f"Target shape: {target_zero_df.shape}")
+		input_tensor, output_tensor = zip(*[calc_io(date) for date in self.dates])
 
-        # input_concat  = pd.concat([input_data, input_zero_df], ignore_index=True)
-        # target_concat = pd.concat([target_data, target_zero_df], ignore_index=True)
+		input_tensor  = torch.vstack(input_tensor)
+		output_tensor = torch.vstack(output_tensor)
 
-        # input_final  = input_concat.stack().values
-        # target_final = target_concat.stack().values
-
-        # print(f"Input shape: {input_final.shape}")
-        # print(f"Target shape: {target_final.shape}")
+		return input_tensor, output_tensor
 
 
-        return input_final, target_final
+	def __process_dates(self):
+		dates = []
+		for i in list(set(self.stock_prices["Date"])):
+			dates.append(datetime.strptime(i, '%Y-%m-%d').date())
+		return sorted(dates)
+	
+	def __calc_means_stds(self):
+
+		# calculates mean given stock code
+		def calc_mean_std(code):
+			# gets prices with NaNs
+			prices_raw = self.stock_prices.loc[self.stock_prices['SecuritiesCode'] == code]["Close"].to_numpy()
+
+			# removes NaNs
+			prices = prices_raw[np.logical_not(np.isnan(prices_raw))]
+
+			return np.mean(prices), np.std(prices)
+		
+		# calculates tensor [[mean_1,std_1], ... ,[mean_n,std_n]]
+		means_stds = torch.tensor([list(calc_mean_std(code)) for code in self.stock_id.tolist()],dtype=torch.float)
+
+		# [[mean_1,std_1], ... ,[mean_n,std_n]] -> ([[mean_1], ... ,[mean_n]] , [[std_1], ... ,[std_n]])
+		means, stds = torch.tensor_split(means_stds, 2, dim=1)
+
+		return means.squeeze(), stds.squeeze()
+
+if __name__ == '__main__':
+	print('making dataset')
+	data = JPXData_test()
+	print('looping through the data')
+	for i in range(len(data)):
+		data[i]
