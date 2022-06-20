@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 
 class JPXData(Dataset):
-	def __init__(self, data_dir="modified_data", stock_list="tokenized_stock_list.csv", stock_prices="stock_prices.csv"):
+	def __init__(self, data, train=True, data_dir="modified_data", stock_list="tokenized_stock_list.csv", stock_prices="stock_prices.csv"):
 		"""
 			data_dir        (string): Directory with where data is.
 			stock_list      (string): File containing information about each stock.
@@ -15,13 +15,8 @@ class JPXData(Dataset):
 		"""
 		self.data_dir           = data_dir
 		self.stock_list         = pd.read_csv(data_dir + '/' + stock_list)
-		self.stock_prices       = pd.read_csv(data_dir + '/' + stock_prices)
-		self.stock_min          = []
-		self.stock_max          = []
-		self.stock_mean         = []
-		self.stock_var          = []
-		self.rate_mean          = []
-		self.rate_var           = []
+		self.stock_prices       = data#pd.read_csv(data_dir + '/' + stock_prices)
+		self.train				= train
 		self.stock_id           = sorted(list(set(self.stock_prices["SecuritiesCode"])))
 		self.indices            = {i: self.stock_id.index(i) for i in self.stock_id}
 		self.stock_id           = torch.tensor(self.stock_id)
@@ -34,13 +29,15 @@ class JPXData(Dataset):
 		self.inputs , self.targets = self.__process_data()
 
 		
-	
 	def __len__(self):
 		# Verify data set size
 		return len(self.dates)
-		
+	
 	def __getitem__(self, idx):
-		return self.inputs[idx], self.targets[idx]
+		if self.train:
+			return self.inputs[idx], self.targets[idx], [self.dates[idx].strftime('%Y-%m-%d')]
+		else:
+			return self.inputs[idx], self.targets[idx], [self.dates[idx].strftime('%Y-%m-%d')]
 	
 	def __process_data(self):
 		def get_data(date):
@@ -49,9 +46,9 @@ class JPXData(Dataset):
 			# extract input data
 			data = self.stock_prices.query("Date == @input_date")
 			data = data.sort_values(by='SecuritiesCode')
-			data = data[["Close", "Target", 'SecuritiesCode']].reset_index()
+			data = data[["AdjustedClose", "Target", 'SecuritiesCode']].reset_index()
 
-			input_data  = torch.tensor(data[ "Close"].values,dtype=torch.float)
+			input_data  = torch.tensor(data[ "AdjustedClose"].values,dtype=torch.float)
 			target_data = torch.tensor(data["Target"].values,dtype=torch.float)
 			codes_data  = torch.tensor(data["SecuritiesCode"].values,dtype=torch.float)
 
@@ -103,7 +100,7 @@ class JPXData(Dataset):
 		# calculates mean given stock code
 		def calc_mean_std(code):
 			# gets prices with NaNs
-			prices_raw = self.stock_prices.loc[self.stock_prices['SecuritiesCode'] == code]["Close"].to_numpy()
+			prices_raw = self.stock_prices.loc[self.stock_prices['SecuritiesCode'] == code]["AdjustedClose"].to_numpy()
 
 			# removes NaNs
 			prices = prices_raw[np.logical_not(np.isnan(prices_raw))]

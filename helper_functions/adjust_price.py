@@ -31,12 +31,33 @@ def adjust_price(data = pd.read_csv("modified_data/stock_prices.csv")):
         ).map(lambda x: float(
             Decimal(str(x)).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
         ))
+        df.loc[:, "AdjustedOpen"] = (
+            df["CumulativeAdjustmentFactor"] * df["Open"]
+        ).map(lambda x: float(
+            Decimal(str(x)).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
+        ))
+        df.loc[:, "AdjustedHigh"] = (
+            df["CumulativeAdjustmentFactor"] * df["High"]
+        ).map(lambda x: float(
+            Decimal(str(x)).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
+        ))
+        df.loc[:, "AdjustedLow"] = (
+            df["CumulativeAdjustmentFactor"] * df["Low"]
+        ).map(lambda x: float(
+            Decimal(str(x)).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
+        ))
         # reverse order
         df = df.sort_values("Date")
         # to fill AdjustedClose, replace 0 into np.nan
         df.loc[df["AdjustedClose"] == 0, "AdjustedClose"] = np.nan
+        df.loc[df["AdjustedOpen"] == 0, "AdjustedOpen"] = np.nan
+        df.loc[df["AdjustedHigh"] == 0, "AdjustedHigh"] = np.nan
+        df.loc[df["AdjustedLow"] == 0, "AdjustedLow"] = np.nan
         # forward fill AdjustedClose
         df.loc[:, "AdjustedClose"] = df.loc[:, "AdjustedClose"].ffill()
+        df.loc[:, "AdjustedOpen"] = df.loc[:, "AdjustedOpen"].ffill()
+        df.loc[:, "AdjustedHigh"] = df.loc[:, "AdjustedHigh"].ffill()
+        df.loc[:, "AdjustedLow"] = df.loc[:, "AdjustedLow"].ffill()
         return df
 
     # generate AdjustedClose
@@ -44,5 +65,9 @@ def adjust_price(data = pd.read_csv("modified_data/stock_prices.csv")):
     price = data.groupby("SecuritiesCode").apply(generate_adjusted_close).reset_index(drop=True)
 
     price.set_index("Date", inplace=True)
-    price.to_csv("modified_data/stock_prices.csv")
+    del price["Open"]
+    del price["High"]
+    del price["Low"]
+    del price["Close"]
+    price.to_csv("modified_data/stock_prices_adjusted.csv")
     return price
