@@ -61,7 +61,7 @@ class autoencoder(nn.Module):
 		return self.decoder(latent)
 	
 	def save_state(self, file):
-		torch.save(self.encoder.state_dict(), "autoencoder_saved/encoder")
+		torch.save(self.encoder.state_dict(), file)
 
 
 # if __name__ == '__main__':

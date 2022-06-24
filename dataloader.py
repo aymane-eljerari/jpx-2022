@@ -7,12 +7,13 @@ from torch.utils.data import Dataset
 from datetime import datetime, timedelta
 
 class JPXData(Dataset):
-	def __init__(self, data, model, data_dir="modified_data", stock_list="tokenized_stock_list.csv", stock_prices="autoencoder_data.csv"):
+	def __init__(self, data, model, latent_space=None, data_dir="modified_data", stock_list="tokenized_stock_list.csv", stock_prices="autoencoder_data.csv"):
 		"""
 			data_dir        (string): Directory with where data is.
 			stock_list      (string): File containing information about each stock.
 			stock_prices    (string): File containing daily stock price data.
 		"""
+
 		self.data_dir           = data_dir
 		self.stock_list         = pd.read_csv(data_dir + '/' + stock_list)
 		self.stock_prices       = data#pd.read_csv(data_dir + '/' + stock_prices)
