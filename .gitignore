@@ -3,4 +3,3 @@ modified_data
 *.pyc
 __pycache__
 helper_functions/__pycache__
-*.csv
