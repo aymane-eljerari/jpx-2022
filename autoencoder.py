@@ -59,6 +59,9 @@ class autoencoder(nn.Module):
 	def forward(self,inputs):
 		latent = self.encoder(inputs)
 		return self.decoder(latent)
+	
+	def save_state(self, file):
+		torch.save(self.encoder.state_dict(), "autoencoder_saved/encoder")
 
 
 # if __name__ == '__main__':

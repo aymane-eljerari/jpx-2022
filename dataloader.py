@@ -1,13 +1,13 @@
 import os
 import torch
+import itertools
 import pandas as pd
 import numpy as np
 from torch.utils.data import Dataset
 from datetime import datetime, timedelta
 
-
 class JPXData(Dataset):
-	def __init__(self, data, train=True, data_dir="modified_data", stock_list="tokenized_stock_list.csv", stock_prices="autoencoder_data.csv"):
+	def __init__(self, data, model, data_dir="modified_data", stock_list="tokenized_stock_list.csv", stock_prices="autoencoder_data.csv"):
 		"""
 			data_dir        (string): Directory with where data is.
 			stock_list      (string): File containing information about each stock.
@@ -16,7 +16,7 @@ class JPXData(Dataset):
 		self.data_dir           = data_dir
 		self.stock_list         = pd.read_csv(data_dir + '/' + stock_list)
 		self.stock_prices       = data#pd.read_csv(data_dir + '/' + stock_prices)
-		self.train				= train
+		self.model 				= model
 		self.stock_id           = sorted(list(set(self.stock_prices["SecuritiesCode"])))
 		self.indices            = {i: self.stock_id.index(i) for i in self.stock_id}
 		self.stock_id           = torch.tensor(self.stock_id)
@@ -28,15 +28,12 @@ class JPXData(Dataset):
 
 		self.inputs , self.targets = self.__process_data()
 
-		
+	
 	def __len__(self):
 		# Verify data set size
 		return len(self.dates)
 	
 	def __getitem__(self, idx):
-		if self.train:
-			return self.inputs[idx], self.targets[idx], [self.dates[idx].strftime('%Y-%m-%d')]
-		else:
 			return self.inputs[idx], self.targets[idx], [self.dates[idx].strftime('%Y-%m-%d')]
 	
 	def __process_data(self):
@@ -47,7 +44,7 @@ class JPXData(Dataset):
 			data = self.stock_prices.query("Date == @input_date")
 			data = data.sort_values(by='SecuritiesCode')
 			data = data[['Target', 'SecuritiesCode', 'Volume', 'AdjustedClose', 'AdjustedOpen',
-       					'AdjustedHigh', 'AdjustedLow', 'BBANDS_upper', 'BBANDS_middle',
+	   					'AdjustedHigh', 'AdjustedLow', 'BBANDS_upper', 'BBANDS_middle',
 						'BBANDS_lower', 'DEMA', 'EMA', 'HT_TRENDLINE', 'KAMA', 'MA', 'MIDPOINT',
 						'SAR', 'SAREXT', 'SMA', 'T3', 'TEMA', 'TRIMA', 'WMA', 'ADX', 'ADXR',
 						'APO', 'AROON_down', 'AROON_up', 'AROONOSC', 'BOP', 'CCI', 'DX',
@@ -71,7 +68,8 @@ class JPXData(Dataset):
 			# standardize input
 			means      = self.stock_means[idx]
 			stds       = self.stock_stds[idx]
-			input_data = torch.nan_to_num(input_data, nan=0)
+			if self.model == "mlp":
+				input_data = torch.nan_to_num(input_data, nan=0)
 			
 			input_data = torch.divide(torch.subtract(input_data, means), stds)
 
@@ -87,25 +85,37 @@ class JPXData(Dataset):
 			# tensor dimensions
 			input_dim  = self.__num_stocks
 			output_dim = self.__num_stocks
-
+	
 			# initialized tensors
-			input_tensor  = torch.zeros(input_dim, 69)
 			output_tensor = torch.empty(output_dim).fill_(float('NaN'))
+			if self.model == "ae":
+				input_tensor  = torch.empty(input_dim, 69).fill_(float('Nan'))
+			if self.model == "mlp":
+				input_tensor  = torch.zeros(input_dim, 69)
 
 			input_tensor[idx]  = input_data
 			output_tensor[idx] = target_data
 
 			return [input_tensor, output_tensor]
 
-		data = np.array([calc_io(date) for date in self.dates])
+		# data = np.array([calc_io(date) for date in self.dates], dtype=object)
 
-		input_tensor  = data[:, 0]
-		output_tensor = data[:, 1]
+		# input_tensor  = data[:, 0]
+		# output_tensor = data[:, 1]
 
-		input_tensor  = [np.hstack(i) for i in input_tensor]
-		output_tensor = np.hstack(output_tensor)
+		input_tensor, output_tensor = zip(*[calc_io(date) for date in self.dates])
 
-		return input_tensor, output_tensor
+		input_tensor  = torch.stack(input_tensor)
+		output_tensor = torch.stack(output_tensor)
+
+		if self.model == "ae":
+			return torch.nan_to_num(input_tensor, nan=0), input_tensor
+			
+		if self.model == "mlp":
+			# input_tensor  = np.array([np.hstack(i) for i in input_tensor])
+			# output_tensor = np.array(np.hstack(output_tensor))
+
+			return input_tensor, output_tensor
 
 
 	def __process_dates(self):
@@ -120,7 +130,7 @@ class JPXData(Dataset):
 		def calc_mean_std(code):
 			# gets prices with NaNs
 			prices_raw = self.stock_prices.loc[self.stock_prices['SecuritiesCode'] == code, ['Volume', 'AdjustedClose', 'AdjustedOpen',
-       					'AdjustedHigh', 'AdjustedLow', 'BBANDS_upper', 'BBANDS_middle',
+	   					'AdjustedHigh', 'AdjustedLow', 'BBANDS_upper', 'BBANDS_middle',
 						'BBANDS_lower', 'DEMA', 'EMA', 'HT_TRENDLINE', 'KAMA', 'MA', 'MIDPOINT',
 						'SAR', 'SAREXT', 'SMA', 'T3', 'TEMA', 'TRIMA', 'WMA', 'ADX', 'ADXR',
 						'APO', 'AROON_down', 'AROON_up', 'AROONOSC', 'BOP', 'CCI', 'DX',
@@ -145,15 +155,16 @@ class JPXData(Dataset):
 			return means, stds
 		
 		# calculates tensor [[mean_1,std_1], ... ,[mean_n,std_n]]
-		means_stds = torch.tensor([np.array(calc_mean_std(code)) for code in self.stock_id.tolist()],dtype=torch.float)
+		means_stds = torch.tensor(np.array([np.array(calc_mean_std(code)) for code in self.stock_id.tolist()]),dtype=torch.float)
 		# [[mean_1,std_1], ... ,[mean_n,std_n]] -> ([[mean_1], ... ,[mean_n]] , [[std_1], ... ,[std_n]])
 		means, stds = torch.tensor_split(means_stds, 2, dim=1)
 
 		return means.squeeze(), stds.squeeze()
 
-# if __name__ == '__main__':
-# 	print('making dataset')
-# 	data = JPXData_test()
-# 	print('looping through the data')
-# 	for i in range(len(data)):
-# 		data[i]
+if __name__ == '__main__':
+	data = pd.read_csv("modified_data/autoencoder_data.csv")
+	print('making dataset')
+	data = JPXData(data, model="ae")
+	print('looping through the data')
+	for i in range(len(data)):
+		data[i]
